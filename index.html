@@ -41,7 +41,10 @@
       <section class="hero">
         <div class="hero-copy">
           <p class="eyebrow">把一个常被忽略的概念讲明白</p>
-          <h1>词元，不是“词”。</h1>
+          <h1>
+            <span class="hero-line">词元，</span>
+            <span class="hero-line hero-line-accent">不是“词”。</span>
+          </h1>
           <p class="hero-lead">
             词元是大模型处理文字时真正拿来计算的单位。
           </p>
@@ -54,6 +57,8 @@
             <a class="button button-secondary" href="#understand">先记住三句话</a>
           </div>
 
+          <p class="hero-note">真正决定窗口、费用和延迟的，往往不是字数，而是词元数。</p>
+
           <div class="hero-tags" aria-label="词元影响的几个方面">
             <span>算窗口</span>
             <span>算费用</span>
@@ -63,6 +68,8 @@
         </div>
 
         <div class="hero-stage" aria-hidden="true">
+          <div class="stage-ring stage-ring-outer"></div>
+          <div class="stage-ring stage-ring-inner"></div>
           <div class="stage-core">词元</div>
           <span class="stage-piece stage-piece-a">字</span>
           <span class="stage-piece stage-piece-b">词</span>
