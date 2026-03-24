@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>词元 | 看懂 Token 如何塑造 AI 的理解方式</title>
+    <meta
+      name="description"
+      content="一页看懂词元（Token）：它是什么、为什么影响上下文窗口和成本、中文与英文的切分差异，以及模型如何把文本变成可计算单位。"
+    />
+    <meta name="theme-color" content="#07111f" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2307111f'/%3E%3Cpath d='M14 18h36v8H36v20h-8V26H14z' fill='%23f0b24b'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./script.js" defer></script>
+  </head>
+  <body>
+    <div class="scroll-progress" aria-hidden="true">
+      <span id="scroll-progress-bar"></span>
+    </div>
+
+    <header class="site-header">
+      <a class="brand" href="#top">
+        <span class="brand-mark">词元</span>
+        <span class="brand-sub">Token Primer</span>
+      </a>
+      <nav class="site-nav" aria-label="主导航">
+        <a href="#meaning">定义</a>
+        <a href="#explorer">示例</a>
+        <a href="#internals">机制</a>
+        <a href="#references">资料</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">AI 语言处理的最小计量单位</p>
+          <h1>词元</h1>
+          <p class="hero-lead">
+            Token 的中文名，让一个一直在后台计数、却决定模型体验的核心概念，终于有了更直观的表达。
+          </p>
+          <p class="hero-body">
+            你输入的一句提问、模型生成的一段回答、一行代码、一串 JSON，都会先被 tokenizer
+            切成词元，再进入计算。上下文窗口、调用成本、响应速度、缓存命中率，几乎都围着词元打转。
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#explorer">看切分示例</a>
+            <a class="button button-secondary" href="#references">查看资料来源</a>
+          </div>
+        </div>
+
+        <aside class="hero-aside">
+          <div class="hero-meter">
+            <span class="meter-label">示例长句</span>
+            <strong>22</strong>
+            <p>一句中英混排说明句，切成了 22 个词元。</p>
+          </div>
+
+          <ul class="hero-facts">
+            <li>
+              <span class="fact-title">英文经验值</span>
+              <span class="fact-body">OpenAI 文档给出的常用近似：1 个词元约等于 4 个英文字符。</span>
+            </li>
+            <li>
+              <span class="fact-title">计费维度</span>
+              <span class="fact-body">输入词元、输出词元、缓存词元，甚至部分模型的推理词元都会被记录。</span>
+            </li>
+            <li>
+              <span class="fact-title">上下文窗口</span>
+              <span class="fact-body">模型的“记忆容量”通常按词元计算，而不是按页数或段落计算。</span>
+            </li>
+            <li>
+              <span class="fact-title">不会全网统一</span>
+              <span class="fact-body">同一段文本在不同模型或不同 tokenizer 下，词元数量可能不同。</span>
+            </li>
+          </ul>
+        </aside>
+
+        <div class="token-cloud" aria-hidden="true">
+          <span style="--x: 8%; --y: 12%; --delay: 0s">AI</span>
+          <span style="--x: 76%; --y: 20%; --delay: 1.4s">world</span>
+          <span style="--x: 68%; --y: 74%; --delay: 2.2s">输出</span>
+          <span style="--x: 22%; --y: 78%; --delay: 3.1s">202</span>
+          <span style="--x: 52%; --y: 8%; --delay: 4.3s">Token</span>
+          <span style="--x: 86%; --y: 54%; --delay: 1.9s">"</span>
+          <span style="--x: 42%; --y: 64%; --delay: 0.8s">世界</span>
+          <span style="--x: 14%; --y: 48%; --delay: 2.8s">input</span>
+          <span style="--x: 58%; --y: 42%; --delay: 3.8s">词元</span>
+        </div>
+      </section>
+
+      <section id="meaning" class="section reveal">
+        <div class="section-head">
+          <p class="section-label">定义</p>
+          <h2>词元不是“词”，而是模型自己的切片方式。</h2>
+          <p class="section-intro">
+            对人来说，语言最自然的单位也许是字、词和句子；对模型来说，真正进入运算的单位却是词元。它既可能是一个完整单词，也可能只是一个前缀、一个空格、一个标点，甚至是几个高频汉字的组合。
+          </p>
+        </div>
+
+        <div class="definition-grid">
+          <article>
+            <h3>它可以比词更小</h3>
+            <p>
+              例如英文里的 <code>Tokenization</code>，可能被拆成
+              <code>Token</code> 与 <code>ization</code>。这就是为什么“一个词不一定等于一个词元”。
+            </p>
+          </article>
+          <article>
+            <h3>它也可以包含空格和标点</h3>
+            <p>
+              对 tokenizer 来说，前导空格、括号、逗号、引号、运算符都可能独立占用词元。自然语言和结构化文本都要为这些符号付出成本。
+            </p>
+          </article>
+          <article>
+            <h3>中文不会按词典机械切词</h3>
+            <p>
+              高频短语可能合并成一个词元，单字也常常独立成词元。换句话说，词元是“统计上高频、便于模型处理的片段”，而不是语言学里的固定词边界。
+            </p>
+          </article>
+        </div>
+
+        <div class="contrast-strip">
+          <div>
+            <span class="contrast-label">自然语言单位</span>
+            <strong>字 / 词 / 句</strong>
+          </div>
+          <div>
+            <span class="contrast-label">模型内部单位</span>
+            <strong>词元 / Token ID</strong>
+          </div>
+          <div>
+            <span class="contrast-label">真正计入窗口与成本</span>
+            <strong>词元数量</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="explorer" class="section reveal">
+        <div class="section-head">
+          <p class="section-label">拆解现场</p>
+          <h2>看一段文本如何被切成词元</h2>
+          <p class="section-intro">
+            下面的示例使用 OpenAI 的 <code>o200k_base</code> 编码做展示。它不是所有模型的统一标准，但足够直观地揭示一个事实：中英文混排、空格、标点、数字、代码符号都会影响词元数量。
+          </p>
+        </div>
+
+        <div class="explorer-shell">
+          <div id="example-nav" class="example-nav" role="tablist" aria-label="词元示例切换"></div>
+
+          <div class="example-stage">
+            <div class="example-source">
+              <span class="example-kicker">原始文本</span>
+              <pre id="sample-text"></pre>
+            </div>
+
+            <div class="example-metrics">
+              <div class="metric">
+                <span class="metric-label">字符数</span>
+                <strong id="character-count">0</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">词元数</span>
+                <strong id="token-count">0</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">字符 / 词元</span>
+                <strong id="density-count">0</strong>
+              </div>
+            </div>
+
+            <div class="scale">
+              <div class="scale-row">
+                <span>字符</span>
+                <div class="scale-track">
+                  <span id="character-bar" class="scale-fill scale-fill-characters"></span>
+                </div>
+              </div>
+              <div class="scale-row">
+                <span>词元</span>
+                <div class="scale-track">
+                  <span id="token-bar" class="scale-fill scale-fill-tokens"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="token-pieces-block">
+              <span class="example-kicker">词元切片</span>
+              <div id="token-pieces" class="token-pieces" aria-live="polite"></div>
+            </div>
+
+            <p id="sample-note" class="sample-note"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-head">
+          <p class="section-label">为什么重要</p>
+          <h2>词元决定的不只是“能说多少”，还包括“要花多少”。</h2>
+          <p class="section-intro">
+            在产品和工程里，词元管理其实是一项基础能力。它影响上下文容量、推理路径、延迟和账单，也决定检索、摘要和对话编排该怎么做。
+          </p>
+        </div>
+
+        <div class="impact-grid">
+          <article>
+            <span class="impact-index">01</span>
+            <h3>上下文窗口</h3>
+            <p>
+              模型的上下文窗口按词元计算。系统提示词、历史对话、检索片段、工具返回值、用户新输入和模型输出，共同争用同一份容量。
+            </p>
+          </article>
+          <article>
+            <span class="impact-index">02</span>
+            <h3>调用成本</h3>
+            <p>
+              主流模型通常按输入词元、输出词元和缓存词元计费。长提示词、长代码、长日志、长 JSON，会在不知不觉中把成本推高。
+            </p>
+          </article>
+          <article>
+            <span class="impact-index">03</span>
+            <h3>响应速度</h3>
+            <p>
+              词元越多，预填充和生成阶段要处理的材料就越多。尤其在多轮长对话里，模型需要反复“再读一遍”过去的大量上下文。
+            </p>
+          </article>
+          <article>
+            <span class="impact-index">04</span>
+            <h3>提示词工程</h3>
+            <p>
+              做 RAG、摘要、对话压缩、工具调用和缓存复用，本质上都在做词元预算管理：把真正重要的信息留在窗口里。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="internals" class="section reveal">
+        <div class="section-head">
+          <p class="section-label">内部机制</p>
+          <h2>一段文本，从人类语言到模型计算，通常会经历四步。</h2>
+          <p class="section-intro">
+            Hugging Face 的 tokenizer 文档把这条流水线拆成若干组件：规范化、预切分、核心分词模型和后处理。不同模型的具体实现不一样，但处理逻辑大体类似。
+          </p>
+        </div>
+
+        <div class="pipeline">
+          <article>
+            <span class="pipeline-step">1</span>
+            <h3>规范化</h3>
+            <p>先处理大小写、Unicode 形式、空白符等差异，让文本在进入核心分词前尽量一致。</p>
+          </article>
+          <article>
+            <span class="pipeline-step">2</span>
+            <h3>预切分</h3>
+            <p>按空格、标点或其他规则做一次粗粒度拆分，限制模型在不合适的位置合并文本片段。</p>
+          </article>
+          <article>
+            <span class="pipeline-step">3</span>
+            <h3>子词建模</h3>
+            <p>
+              再用 BPE、WordPiece、Unigram 等算法，把文本拆成更适合统计学习的子词单位。高频组合更容易被合并成单个词元。
+            </p>
+          </article>
+          <article>
+            <span class="pipeline-step">4</span>
+            <h3>映射到 ID</h3>
+            <p>最终，每个词元会变成一个整数 ID，进入嵌入层和后续网络计算，模型真正处理的是这些 ID 序列。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-head">
+          <p class="section-label">中文语境</p>
+          <h2>理解中文词元，最需要警惕的是“看起来短，实际上并不省”。</h2>
+          <p class="section-intro">
+            对中文用户来说，最容易被低估的不是长英文，而是中英文混排、全角标点、结构化文本和重复上下文。它们都可能把词元预算吃得很快。
+          </p>
+        </div>
+
+        <div class="observation-list">
+          <article>
+            <h3>高频双字词可能合并，单字也可能独立</h3>
+            <p>词元不等于分词结果。像“世界”“模型”这类高频片段，可能直接成为一个词元；其他场景下又会拆得更细。</p>
+          </article>
+          <article>
+            <h3>全角标点和括号也要占位</h3>
+            <p>逗号、句号、顿号、书名号、全角括号看起来很小，但照样会计入成本与窗口。</p>
+          </article>
+          <article>
+            <h3>代码、表格、JSON 往往比自然语言更耗 token</h3>
+            <p>因为它们包含引号、下划线、冒号、换行和重复字段名，符号密度高，词元开销也更高。</p>
+          </article>
+          <article>
+            <h3>真正的节省，不是盲目压缩，而是减少无效重复</h3>
+            <p>把指令写清楚、去掉冗余示例、摘要旧对话、只检索必要片段，通常比生硬缩句更有效。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-head">
+          <p class="section-label">常见误解</p>
+          <h2>关于词元，最容易踩的坑通常有五个。</h2>
+        </div>
+
+        <div class="faq-list">
+          <details>
+            <summary>1 个词元等于 1 个汉字，或者 1 个单词吗？</summary>
+            <p>
+              不是。词元可以是整个词，也可以是词的一部分，还可以是空格、标点、数字甚至几个高频汉字的组合。它是模型统计学习出来的单位，不是语文课里的单位。
+            </p>
+          </details>
+          <details>
+            <summary>词元越少越好吗？</summary>
+            <p>
+              也不是。减少冗余很重要，但过度压缩会损失语义清晰度，反而让模型更难理解任务。好的做法是减少无效材料，而不是牺牲必要信息。
+            </p>
+          </details>
+          <details>
+            <summary>有大上下文窗口，就等于模型能无限记住一切吗？</summary>
+            <p>
+              不能。大窗口只是容量更大，不代表注意力永远均匀分配。越长的上下文，越需要你主动组织信息，把真正关键的内容放在更合适的位置。
+            </p>
+          </details>
+          <details>
+            <summary>我只需要关心输入词元，不用关心输出词元？</summary>
+            <p>
+              不行。很多平台会分别记录输入、输出、缓存，部分模型还会暴露推理相关词元。你真正的成本和限制，往往是这些指标共同决定的。
+            </p>
+          </details>
+          <details>
+            <summary>所有模型都用同一种 tokenizer 吗？</summary>
+            <p>
+              不是。不同模型家族可能使用不同编码器和词表，所以同一段文本在不同平台上的词元数量并不一定一致。迁移模型时，最好重新估算。
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section id="references" class="section reveal">
+        <div class="section-head">
+          <p class="section-label">资料来源</p>
+          <h2>页面内容基于公开文档整理，适合继续深挖。</h2>
+          <p class="section-intro">
+            如果你想继续研究更精确的词元计算、不同 tokenizer 的行为，或者直接验证自己的文本切分结果，可以从下面这些资料继续走。
+          </p>
+        </div>
+
+        <ul class="reference-list">
+          <li>
+            <a href="https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count" target="_blank" rel="noreferrer">
+              OpenAI Help Center · What are tokens and how to count them?
+            </a>
+          </li>
+          <li>
+            <a href="https://platform.openai.com/tokenizer/" target="_blank" rel="noreferrer">
+              OpenAI Tokenizer · 在线查看文本如何被切成词元
+            </a>
+          </li>
+          <li>
+            <a href="https://huggingface.co/docs/tokenizers/en/components" target="_blank" rel="noreferrer">
+              Hugging Face Tokenizers · Tokenizer 的组件与分词模型
+            </a>
+          </li>
+          <li>
+            <a href="https://docs.anthropic.com/en/docs/build-with-claude/token-counting" target="_blank" rel="noreferrer">
+              Anthropic · Token counting
+            </a>
+          </li>
+          <li>
+            <a href="https://docs.anthropic.com/en/docs/build-with-claude/context-windows" target="_blank" rel="noreferrer">
+              Anthropic · Context windows
+            </a>
+          </li>
+        </ul>
+
+        <p class="closing-note">
+          这是一份面向中文用户的词元说明页。它不追求把每一种 tokenizer 都讲透，而是希望先建立一个核心直觉：模型处理语言时，真正计数和计费的，不是“字数”，而是“词元数”。
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
